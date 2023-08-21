@@ -94,36 +94,20 @@ namespace ALLClass
         private static string RegexAll(string page, string pattern)
         {
             foreach (Match m in Regex.Matches(page, pattern)) { if (m.Length > 70) { return m.Value; } }
-            return "使用正则匹配特定长度文本失败...";
+            throw new Exception("使用正则匹配特定长度文本失败...");
         }
         /// <summary>
-        /// 蓝奏云无密码直链解析格式化json获取sign
+        /// 蓝奏云直链解析获取sign
         /// </summary>
-        /// <param name="page">蓝奏云无密码提交Json页面</param>
+        /// <param name="page">蓝奏云提交Json页面</param>
         /// <returns></returns>
         private static string GetSign(string page)
         {
-            // 移除 JavaScript 中的函数定义
-            page = Regex.Replace(page, "function\\s+\\w+\\s*\\([^)]*\\)\\s*{[^{}]*(((?'Open'{)[^{}]*)+((?'Close-Open'})[^{}]*)+)*(?(Open)(?!))}", "");
             // 移除 JavaScript 中的单行注释
-            page = Regex.Replace(page, "\\/\\/[^\\n]*", "");
-            // 初始化trash列表，用于存储匹配到的变量名
-            var trash = new List<string>();
-            foreach (Match m in Regex.Matches(page, "(?<=var )(.*)(?= =)")) { if (m.Success) { trash.Add(m.Value); } }
-            // 获取result字符串，并将其中的单引号替换为双引号
-            var result = RegexAll(page, "{.*}").Replace("\'", "\"");
-            // 遍历trash列表中的每个变量名
-            trash.ForEach(item =>
-            {
-                // 获取变量名对应的值
-                var value = Regex.Match(page, $"(?<={item} = ')(.*)(?=')").Value;
-                // 将result字符串中的变量名替换为对应的值
-                result = result.Replace(item, $"\"{value}\"");
-            });
-            // 解析result字符串为JSON对象
-            dynamic postjson = Json.DeserializeObject(result);
-            // 返回sign属性的值
-            return $"{postjson["sign"]}";
+            string newpage = Regex.Replace(page, "\\/\\/[^\\n]*", "");
+            // 匹配所有var开头的变量 返回长度大于70的值
+            foreach (Match m in Regex.Matches(newpage, "var\\s+\\w+\\s*=\\s*'([^']+)'", RegexOptions.Singleline)) { if (m.Success && m.Groups[1].Value.Length > 70) { return m.Groups[1].Value; } }
+            throw new Exception("获取Sign失败!");
         }
         /// <summary>
         /// 蓝奏云直链解析
@@ -143,8 +127,8 @@ namespace ALLClass
             {
                 string postData;
                 // 根据是否提供了密码构造 postData 字符串
-                if (string.IsNullOrEmpty(password)) { string sign = GetSign(await Download.DownloadString(domain + RegexAll(pageContent, "(?<=src=\")[^\"]*"))); postData = $"action=downprocess&sign={sign}&ves=1"; }
-                else { string sign = RegexAll(pageContent, "(?<=sign=)(.*)(?=&)"); postData = $"action=downprocess&sign={sign}&ves=1&p={password}";  }
+                if (string.IsNullOrEmpty(password)) { string sign = GetSign(await Download.DownloadString(domain + RegexAll(pageContent, "(?<=src=\")[^\"]*"))); postData = $"action=downprocess&sign={sign}&ves=1";}
+                else { string sign = GetSign(pageContent); postData = $"action=downprocess&sign={sign}&ves=1&p={password}";   }
                 if (!string.IsNullOrEmpty(postData))
                 {
                     // 上传数据并获取结果
