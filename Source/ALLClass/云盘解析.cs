@@ -25,21 +25,11 @@ namespace ALLClass
             else if (link.Contains("lanzou"))
             {
                 // 获取域名
-                string domain = "https://" + Regex.Match(link, "(\\w*\\.){2}\\w*").Value;
+                string domain = "https://" + new Uri(link).Host;
                 // 如果链接以 "&folder" 结尾
                 if (link.EndsWith("&folder")) { return await 蓝奏云文件夹解析(domain, link.Replace($"&pwd={password}", "").Replace("&folder", ""), password.Replace("&folder", "")); }
                 // 否则，调用 蓝奏云直链解析 函数
                 return await 蓝奏云直链解析(domain, link.Replace($"&pwd={password}", ""), password);
-            }
-            // 如果链接中包含 "123pan"
-            else if (link.Contains("123pan"))
-            {
-                // 如果链接中包含 ".html"
-                if (link.Contains(".html")) { link = link.Replace(".html", ""); }
-                // 获取 ID
-                string ID = Regex.Replace(link.Replace($"&pwd={password}", ""), ".*/", "");
-                // 调用 Ottpan 函数
-                return await Ottpan(ID, password);
             }
             // 如果链接以 "http" 开头
             else if (link.StartsWith("http")) { return link; }
@@ -84,41 +74,6 @@ namespace ALLClass
             return query[name];
         }
         /// <summary>
-        /// 123云盘直链解析
-        /// </summary>
-        /// <param name="Content">123云盘分享链接</param>
-        /// <param name="password">123云盘分享密码</param>
-        /// <returns></returns>
-        internal static async Task<string> Ottpan(string content, string password = "")
-        {
-            // 构造URL
-            string postUrl = $"https://www.123pan.com/b/api/share/get?limit=100&next=1&orderBy=share_id&orderDirection=desc&shareKey={content}&SharePwd={password}&ParentFileId=0&Page=1";
-            // 从URL下载JSON数据
-            string ottpanJsonString = await Web.DownloadString(postUrl);
-            // 将JSON数据反序列化为动态对象
-            dynamic ottpanJson = Json.DeserializeObject(ottpanJsonString);
-            // 检查code属性值是否为0
-            if ($"{ottpanJson["code"]}" == "0")
-            {
-                // 构造JSON字符串
-                string postJson = $"{{\"ShareKey\":\"{content}\",\"FileID\":{ottpanJson["data"]["InfoList"][0]["FileId"]},\"S3keyFlag\":\"{ottpanJson["data"]["InfoList"][0]["S3KeyFlag"]}\",\"Size\":{ottpanJson["data"]["InfoList"][0]["Size"]},\"Etag\":\"{ottpanJson["data"]["InfoList"][0]["Etag"]}\"}}";
-                // 将JSON字符串上传到指定的URL
-                string result = await Web.UploadData("", "https://www.123pan.com/b/api/share/download/info", Encoding.UTF8.GetBytes(postJson), 2);
-                // 将上传结果反序列化为动态对象
-                dynamic ottpanJson2 = Json.DeserializeObject(result);
-                // 检查code属性值是否为0
-                if ($"{ottpanJson2["code"]}" == "0")
-                {
-                    // 获取查询字符串参数
-                    string paramsValue = GetQueryString($"{ottpanJson2["data"]["DownloadURL"]}", "params");
-                    // 解码查询字符串参数并返回结果
-                    return await Get(Encoding.UTF8.GetString(Convert.FromBase64String(paramsValue)));
-                }
-                else { return $"错误：{ottpanJson2["message"]}"; }
-            }
-            else { return $"错误：{ottpanJson["message"]}"; }
-        }
-        /// <summary>
         /// 传入蓝奏云页面匹配错误信息
         /// </summary>
         /// <param name="msg">蓝奏云的页面</param>
@@ -148,9 +103,13 @@ namespace ALLClass
         /// <returns></returns>
         private static string GetSign(string page)
         {
+            // 移除 JavaScript 中的函数定义
+            page = Regex.Replace(page, "function\\s+\\w+\\s*\\([^)]*\\)\\s*{[^{}]*(((?'Open'{)[^{}]*)+((?'Close-Open'})[^{}]*)+)*(?(Open)(?!))}", "");
+            // 移除 JavaScript 中的单行注释
+            page = Regex.Replace(page, "\\/\\/[^\\n]*", "");
             // 初始化trash列表，用于存储匹配到的变量名
             var trash = new List<string>();
-            foreach (Match m in Regex.Matches(page, "(?<=var )(.*)(?= =)")) { trash.Add(m.Value); }
+            foreach (Match m in Regex.Matches(page, "(?<=var )(.*)(?= =)")) { if (m.Success) { trash.Add(m.Value); } }
             // 获取result字符串，并将其中的单引号替换为双引号
             var result = RegexAll(page, "{.*}").Replace("\'", "\"");
             // 遍历trash列表中的每个变量名
@@ -178,18 +137,18 @@ namespace ALLClass
             // 初始化 result 变量
             string result = "蓝奏云直链解析失败...";
             // 下载 contentUrl 参数指定页面的内容
-            string pageContent = await Web.DownloadString(Content);
+            string pageContent = await Download.DownloadString(Content);
             // 检查 Msg 方法的返回值
             if (Msg(pageContent, true) != "True")
             {
                 string postData;
                 // 根据是否提供了密码构造 postData 字符串
-                if (string.IsNullOrEmpty(password)) { string sign = GetSign(await Web.DownloadString(domain + RegexAll(pageContent, "(?<=src=\")[^\"]*"))); postData = $"action=downprocess&sign={sign}&ves=1"; }
-                else { string sign = RegexAll(pageContent, "(?<=sign=)(.*)(?=&)"); postData = $"action=downprocess&sign={sign}&ves=1&p={password}"; }
+                if (string.IsNullOrEmpty(password)) { string sign = GetSign(await Download.DownloadString(domain + RegexAll(pageContent, "(?<=src=\")[^\"]*"))); postData = $"action=downprocess&sign={sign}&ves=1"; }
+                else { string sign = RegexAll(pageContent, "(?<=sign=)(.*)(?=&)"); postData = $"action=downprocess&sign={sign}&ves=1&p={password}";  }
                 if (!string.IsNullOrEmpty(postData))
                 {
                     // 上传数据并获取结果
-                    result = await Web.UploadData(Content, $"{domain}/ajaxm.php", Encoding.UTF8.GetBytes(postData));
+                    result = await Download.UploadData($"{domain}/ajaxm.php", postData, 1, Content);
                     // 反序列化结果
                     dynamic lanzouJson = Json.DeserializeObject(result);
                     // 检查 zt 属性的值
@@ -212,7 +171,7 @@ namespace ALLClass
         {
             // 下载网页内容
             string result;
-            string page = await Web.DownloadString(Content);
+            string page = await Download.DownloadString(Content);
             // 创建一个集合来存储不需要的字符串
             HashSet<string> trash = new HashSet<string>();
             // 使用正则表达式匹配所有形如 `var variableName =` 的字符串，并将变量名添加到 `trash` 集合中
@@ -272,7 +231,7 @@ namespace ALLClass
             if (postdata != "")
             {
                 // 使用 `Web.UploadData` 方法上传数据
-                result = await Web.UploadData(Content, $"{domain}/filemoreajax.php", Encoding.UTF8.GetBytes(postdata));
+                result = await Download.UploadData($"{domain}/filemoreajax.php", postdata, 1, Content);
                 // 将返回的 JSON 字符串转换为动态对象
                 dynamic lanzouJsonFolder = Json.DeserializeObject(result);
                 // 如果返回的状态码为 1
@@ -296,7 +255,7 @@ namespace ALLClass
         /// <returns></returns>
         internal static async Task<string> QQ邮箱直链解析(string Content)
         {
-            foreach (Match link in Regex.Matches(await Web.DownloadString(Content), "http[^\"]+")) { if (link.Value.Contains("ftn.qq.com")) { return Regex.Unescape(link.Value).Replace("&eggs", ""); } }
+            foreach (Match link in Regex.Matches(await Download.DownloadString(Content), "http[^\"]+")) { if (link.Value.Contains("ftn.qq.com")) { return Regex.Unescape(link.Value).Replace("&eggs", ""); } }
             return "QQ邮箱直链解析失败...";
         }
     }

@@ -74,8 +74,8 @@
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </Page>
+    <Compile Include="ALLClass\Download.cs" />
     <Compile Include="ALLClass\Json.cs" />
-    <Compile Include="ALLClass\WebClient.cs" />
     <Compile Include="ALLClass\云盘解析.cs" />
     <Compile Include="App.xaml.cs">
       <DependentUpon>App.xaml</DependentUpon>
