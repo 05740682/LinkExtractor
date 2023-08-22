@@ -11,6 +11,7 @@ namespace 云盘解析
         public App()
         {
             ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
+            ServicePointManager.DefaultConnectionLimit = 1024;
         }
     }
 }
