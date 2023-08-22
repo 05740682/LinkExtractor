@@ -97,51 +97,81 @@ namespace ALLClass
             throw new Exception("使用正则匹配特定长度文本失败...");
         }
         /// <summary>
-        /// 蓝奏云直链解析获取sign
+        /// 从蓝奏云的提交页面中解析获取签名（sign）信息列表。
         /// </summary>
-        /// <param name="page">蓝奏云提交Json页面</param>
-        /// <returns></returns>
-        private static string GetSign(string page)
+        /// <param name="page">蓝奏云提交Json页面的内容</param>
+        /// <returns>解析得到的签名信息列表</returns>
+        private static List<string> GetSign(string page)
         {
-            // 移除 JavaScript 中的单行注释
+            // 用于存储解析得到的签名信息列表
+            List<string> signs = new List<string>();
+            // 移除页面中的 JavaScript 单行注释，以便更好地处理页面内容
             string newpage = Regex.Replace(page, "\\/\\/[^\\n]*", "");
-            // 匹配所有var开头的变量 返回长度大于70的值
-            foreach (Match m in Regex.Matches(newpage, "var\\s+\\w+\\s*=\\s*'([^']+)'", RegexOptions.Singleline)) { if (m.Success && m.Groups[1].Value.Length > 70) { return m.Groups[1].Value; } }
+            // 使用正则表达式匹配所有以 "var" 开头的变量定义，并提取长度大于 70 的值，这些被认为是签名信息
+            foreach (Match m in Regex.Matches(newpage, "var\\s+\\w+\\s*=\\s*'([^']+)'", RegexOptions.Singleline)) { if (m.Success && m.Groups[1].Value.Length > 70) { signs.Add(m.Groups[1].Value); } }
+            // 如果成功解析到至少一个签名信息，则返回签名信息列表；否则，抛出异常表示获取签名失败
+            if (signs.Count > 0) { return signs; }
             throw new Exception("获取Sign失败!");
         }
         /// <summary>
-        /// 蓝奏云直链解析
+        /// 解析蓝奏云分享链接以获取直链。
         /// </summary>
-        /// <param name="domain"></param>
+        /// <param name="domain">蓝奏云域名</param>
         /// <param name="Content">蓝奏云分享链接</param>
         /// <param name="password">蓝奏云分享密码</param>
-        /// <returns></returns>
+        /// <returns>直链的字符串表示，或者解析失败的错误信息</returns>
         private static async Task<string> 蓝奏云直链解析(string domain, string Content, string password = "")
         {
             // 初始化 result 变量
             string result = "蓝奏云直链解析失败...";
             // 下载 contentUrl 参数指定页面的内容
             string pageContent = await Download.DownloadString(Content);
-            // 检查 Msg 方法的返回值
+            // 检查 Msg 方法的返回值，Msg 用于判断页面内容是否正常
             if (Msg(pageContent, true) != "True")
             {
+                List<string> signs;
                 string postData;
                 // 根据是否提供了密码构造 postData 字符串
-                if (string.IsNullOrEmpty(password)) { string sign = GetSign(await Download.DownloadString(domain + RegexAll(pageContent, "(?<=src=\")[^\"]*"))); postData = $"action=downprocess&sign={sign}&ves=1";}
-                else { string sign = GetSign(pageContent); postData = $"action=downprocess&sign={sign}&ves=1&p={password}";   }
-                if (!string.IsNullOrEmpty(postData))
+                if (string.IsNullOrEmpty(password))
                 {
-                    // 上传数据并获取结果
-                    result = await Download.UploadData($"{domain}/ajaxm.php", postData, 1, Content);
-                    // 反序列化结果
-                    dynamic lanzouJson = Json.DeserializeObject(result);
-                    // 检查 zt 属性的值
-                    if ($"{lanzouJson["zt"]}" == "1") { result = await Get($"{lanzouJson["dom"]}/file/{lanzouJson["url"]}"); }
-                    else { result = $"错误：{lanzouJson["inf"]}"; }
+                    // 从页面内容中提取下载链接，并获取签名信息列表
+                    signs = GetSign(await Download.DownloadString(domain + RegexAll(pageContent, "(?<=src=\")[^\"]*")));
+                    // 遍历签名列表
+                    foreach (string sign in signs)
+                    {
+                        // 构造 POST 请求的数据
+                        postData = $"action=downprocess&sign={sign}&ves=1";
+                        // 上传数据并获取结果
+                        result = await Download.UploadData($"{domain}/ajaxm.php", postData, 1, Content);
+                        // 反序列化结果为 JSON 对象
+                        dynamic lanzouJson = Json.DeserializeObject(result);
+                        // 检查 JSON 对象中的 zt 属性值
+                        if ($"{lanzouJson["zt"]}" == "1") { result = await Get($"{lanzouJson["dom"]}/file/{lanzouJson["url"]}"); break; }
+                        else { result = $"错误：{lanzouJson["inf"]}"; }
+                    }
+                }
+                else
+                {
+                    // 获取页面内容的签名信息列表
+                    signs = GetSign(pageContent);
+                    // 遍历签名列表
+                    foreach (string sign in signs)
+                    {
+                        // 构造带密码的 POST 请求数据
+                        postData = $"action=downprocess&sign={sign}&ves=1&p={password}";
+                        // 上传数据并获取结果
+                        result = await Download.UploadData($"{domain}/ajaxm.php", postData, 1, Content);
+                        // 反序列化结果为 JSON 对象
+                        dynamic lanzouJson = Json.DeserializeObject(result);
+                        // 检查 JSON 对象中的 zt 属性值
+                        if ($"{lanzouJson["zt"]}" == "1") { result = await Get($"{lanzouJson["dom"]}/file/{lanzouJson["url"]}"); break; }
+                        else { result = $"错误：{lanzouJson["inf"]}"; }
+                    }
                 }
             }
             else { result = $"错误：{Msg(pageContent)}"; }
-            // 返回 result 的值
+
+            // 返回解析结果
             return result;
         }
         /// <summary>
