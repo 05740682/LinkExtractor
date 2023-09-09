@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Web;
+using System.Windows;
 
 namespace ALLClass
 {
@@ -111,6 +112,11 @@ namespace ALLClass
             foreach (Match m in Regex.Matches(newpage, "var\\s+\\w+\\s*=\\s*'([^']+)'", RegexOptions.Singleline)) { if (m.Success && m.Groups[1].Value.Length > 70) { signs.Add(m.Groups[1].Value); } }
             // 如果成功解析到至少一个签名信息，则返回签名信息列表；否则，抛出异常表示获取签名失败
             if (signs.Count > 0) { return signs; }
+            else
+            {
+                var match = Regex.Match(page, "'sign':'([^']*)'");
+                if (match.Success) { signs.Add(match.Groups[1].Value); return signs; }
+            }
             throw new Exception("获取Sign失败!");
         }
         /// <summary>
